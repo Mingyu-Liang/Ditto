@@ -1,0 +1,55 @@
+# build files (all tree)
+Makefile
+Makefile.in
+.deps
+.libs
+
+# libraries
+*.la
+
+# object files
+*.o
+*.lo
+
+# tool files
+cppcheck.err
+cscope.out
+cscope.files
+cscope.in.out
+cscope.po.out
+TAGS
+tags
+
+# build files (just root)
+aclocal.m4
+ar-lib
+autom4te.cache/
+compile
+config.guess
+config.h
+config.h.in
+config.h.in~
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+libtool
+ltmain.sh
+m4/libtool.m4
+m4/ltoptions.m4
+m4/ltsugar.m4
+m4/ltversion.m4
+m4/lt~obsolete.m4
+missing
+stamp-h1
+
+# test files
+test/*.log
+test/*.trs
+test-driver
+test-suite.log
+
+# Editor files
+.ycm_extra_conf.py*
