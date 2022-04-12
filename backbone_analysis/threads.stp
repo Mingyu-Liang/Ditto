@@ -1,0 +1,1161 @@
+#! /usr/bin/env stap
+
+%{
+#include <linux/file.h>
+#include <net/sock.h>
+#include <linux/tcp.h>
+#include <linux/socket.h>
+%}
+
+global T_APP                    = 1
+global T_NETIO_LISTEN           = 2
+global T_NETIO_TCP_SEND         = 4
+global T_NETIO_TCP_RECV         = 8
+global T_DISKIO_WRITE           = 16
+global T_DISKIO_READ            = 32
+global T_POLL                   = 64
+global T_EPOLL                  = 128
+global T_SELECT                 = 256
+global T_CLONED                 = 512
+global T_CLONE                  = 1024
+global T_MASTER                 = 2048
+
+global pids                 # key: pid, value: number of child threads
+global tids  
+global conns
+
+global cloned_thread_edges
+global cloned_process_thread_edges
+global process_thread_edges
+global tmp_clone_flags
+
+global fds
+global fds_mode
+global fds_flag
+global fds_socket_opt
+global fds_socket_fam
+global epfds
+
+global process_num_conn_accept         # key: pid, value: number of conns it accepted
+global thread_num_conn_accept          # key: tid, value: number of conns it accepted
+
+global process_num_tcp_recv_reqs     # key: pid, value: number of requests it recv
+global thread_num_tcp_recv_reqs      # key: tid, value: number of requests it recv
+
+global process_num_tcp_send_reqs     # key: pid, value: number of requests it read/write
+global thread_num_tcp_send_reqs      # key: tid, value: number of requests it read/write
+
+global process_num_diskio_read_reqs    # key: pid, value: number of requests it read/write
+global thread_num_diskio_read_reqs     # key: tid, value: number of requests it read/write
+
+global process_num_diskio_write_reqs   # key: pid, value: number of requests it read/write
+global thread_num_diskio_write_reqs    # key: tid, value: number of requests it read/write
+
+global process_tcp_recv_fds         # key: socket fd, value: pids
+global thread_tcp_recv_fds          # key: socket fd, value: tids
+
+global process_tcp_send_fds        # key: socket fd, value: pids
+global thread_tcp_send_fds         # key: socket fd, value: tids
+
+global process_diskio_read_fds        # key: socket fd, value: pids
+global thread_diskio_read_fds         # key: socket fd, value: tids
+
+global process_diskio_write_fds       # key: socket fd, value: pids
+global thread_diskio_write_fds        # key: socket fd, value: tids
+
+global process_num_tcp_recv_fds         # key: socket fd, value: pids
+global thread_num_tcp_recv_fds          # key: socket fd, value: tids
+
+global process_num_tcp_send_fds        # key: socket fd, value: pids
+global thread_num_tcp_send_fds         # key: socket fd, value: tids
+
+global process_num_diskio_read_fds        # key: socket fd, value: pids
+global thread_num_diskio_read_fds         # key: socket fd, value: tids
+
+global process_num_diskio_write_fds       # key: socket fd, value: pids
+global thread_num_diskio_write_fds        # key: socket fd, value: tids
+
+global process_num_epolls
+global thread_num_epolls
+
+global process_num_polls
+global thread_num_polls
+
+global process_num_selects
+global thread_num_selects
+
+global thread_num_switched_off
+global process_num_switched_off
+
+global syscall_cnt
+
+global sys_read_index
+global sys_read_fd
+global sys_read_count
+global sys_read_type
+
+global sys_readv_index
+global sys_readv_fd
+global sys_readv_count
+global sys_readv_iov_count
+global sys_readv_iov_each_count
+global sys_readv_type
+
+global sys_pread_index
+global sys_pread_fd
+global sys_pread_count
+global sys_pread_offset
+
+global sys_preadv_index
+global sys_preadv_fd
+global sys_preadv_count
+global sys_preadv_iov_count
+global sys_preadv_iov_each_count
+global sys_preadv_offset
+
+global sys_recv_index
+global sys_recv_fd
+global sys_recv_count
+
+global sys_recvfrom_index
+global sys_recvfrom_fd
+global sys_recvfrom_count
+
+global sys_recvmsg_index
+global sys_recvmsg_fd
+global sys_recvmsg_count
+global sys_recvmsg_iov_count
+global sys_recvmsg_iov_each_count
+
+global sys_write_index
+global sys_write_fd
+global sys_write_count
+global sys_write_type
+
+global sys_writev_index
+global sys_writev_fd
+global sys_writev_count
+global sys_writev_iov_count
+global sys_writev_iov_each_count
+global sys_writev_type
+
+global sys_pwrite_index
+global sys_pwrite_fd
+global sys_pwrite_count
+global sys_pwrite_offset
+
+global sys_pwritev_index
+global sys_pwritev_fd
+global sys_pwritev_count
+global sys_pwritev_iov_count
+global sys_pwritev_iov_each_count
+global sys_pwritev_offset
+
+global sys_send_index
+global sys_send_fd
+global sys_send_count
+
+global sys_sendto_index
+global sys_sendto_fd
+global sys_sendto_count
+
+global sys_sendmsg_index
+global sys_sendmsg_fd
+global sys_sendmsg_count
+global sys_sendmsg_iov_count
+global sys_sendmsg_iov_each_count
+
+global sys_accept_index
+global sys_accept_fd
+
+function task_file_handle_socket:long (task:long, fd:long) %{ /* pure */
+  struct task_struct *p = (struct task_struct *)((long)STAP_ARG_task);
+  struct files_struct *files;
+  struct file *filp;
+  struct dentry *dentry;
+  struct inode *inode;
+
+  rcu_read_lock();
+  if ((files = kread(&p->files)) &&
+      (filp = fcheck_files(files, STAP_ARG_fd)) &&
+#ifdef STAPCONF_DPATH_PATH
+      (dentry = kread(&filp->f_path.dentry)) &&
+#else
+      (dentry = kread(&filp->f_dentry)) &&
+#endif
+      (inode = kread(&dentry->d_inode))) {
+    if (S_ISSOCK(kread(&inode->i_mode)))
+      STAP_RETVALUE = (long)SOCKET_I(inode);
+  }
+
+  CATCH_DEREF_FAULT();
+  rcu_read_unlock();
+%}
+
+function task_file_handle_i_mode:long (task:long, fd:long) %{ /* pure */
+	struct task_struct *p = (struct task_struct *)((long)STAP_ARG_task);
+	struct files_struct *files;
+	struct file *filp;
+	struct dentry *dentry;
+	struct inode *inode;
+
+	rcu_read_lock();
+	if ((files = kread(&p->files)) &&
+	    (filp = fcheck_files(files, STAP_ARG_fd)) &&
+#ifdef STAPCONF_DPATH_PATH
+	    (dentry = kread(&filp->f_path.dentry)) &&
+#else
+	    (dentry = kread(&filp->f_dentry)) &&
+#endif
+	    (inode = kread(&dentry->d_inode))) {
+		STAP_RETVALUE = kread(&inode->i_mode);
+	}
+
+	CATCH_DEREF_FAULT();
+	rcu_read_unlock();
+%}
+
+function i_mode2str:string (i_mode:long) {
+	if (%{ S_ISLNK(STAP_ARG_i_mode) %})
+		return "S_IFLNK"
+	if (%{ S_ISREG(STAP_ARG_i_mode) %})
+		return "S_IFREG"
+	if (%{ S_ISDIR(STAP_ARG_i_mode) %})
+		return "S_IFDIR"
+	if (%{ S_ISCHR(STAP_ARG_i_mode) %})
+		return "S_IFCHR"
+	if (%{ S_ISBLK(STAP_ARG_i_mode) %})
+		return "S_IFBLK"
+	if (%{ S_ISFIFO(STAP_ARG_i_mode) %})
+		return "S_IFIFO"
+	if (%{ S_ISSOCK(STAP_ARG_i_mode) %})
+		return "S_IFSOCK"
+}
+
+function task_file_handle_f_flags:long (task:long, fd:long) %{ /* pure */
+	struct task_struct *p = (struct task_struct *)((long)STAP_ARG_task);
+	struct files_struct *files;
+	struct file *filp;
+
+	rcu_read_lock();
+	if ((files = kread(&p->files)) &&
+	    (filp = fcheck_files(files, STAP_ARG_fd))) {
+		STAP_RETVALUE = kread(&filp->f_flags);
+	}
+
+	CATCH_DEREF_FAULT();
+	rcu_read_unlock();
+%}
+
+function task_file_handle_fd_flags:string (task:long, fd:long) %{ /* pure */
+	struct task_struct *p = (struct task_struct *)((long)STAP_ARG_task);
+	struct files_struct *files;
+	struct fdtable *fdt;
+	int gcoe;
+
+	rcu_read_lock();
+	if ((files = kread(&p->files)) &&
+	    (fdt = files_fdtable(files))) {
+		/* Use test_bit directly instead of FD_ISSET which might
+		   not be defined on some kernels.  */
+		unsigned long *bs = (unsigned long *)kread(&fdt->close_on_exec);
+		gcoe = test_bit(STAP_ARG_fd, bs);
+		snprintf(STAP_RETVALUE, MAXSTRINGLEN,
+			"%s", gcoe ? "FD_CLOEXEC" : "");
+	}
+
+	CATCH_DEREF_FAULT();
+	rcu_read_unlock();
+%}
+
+function task_file_handle_flags:string (task:long, fd:long) {
+  f_flag = _sys_open_flag_str(task_file_handle_f_flags(task, fd));
+  fd_flag = task_file_handle_fd_flags(task, fd);
+
+  if (!(f_flag == "") && !(fd_flag == "")) {
+    return sprintf("%s|%s", f_flag, fd_flag)
+  } else if (!(f_flag == "") && fd_flag == "") {
+    return f_flag
+  } else if (f_flag == "" && !(fd_flag == "")) {
+    return fd_flag
+  } else{
+    return ""
+  }
+}
+
+function socket_optname:string (sock:long) %{ /* pure */
+    struct socket *sock = (struct socket *)((long)STAP_ARG_sock);
+    int optval;
+    int optlen;
+    int ret, a;
+    char str[30];
+    struct linger ling;
+    struct optname_item {
+        int optfam;
+        int optnum;
+        const char *optname;
+        int show_val;
+    } const *p;
+    static const struct optname_item optname_entries[] = {
+        { SOL_SOCKET, SO_DEBUG,     "SO_DEBUG",     0 },
+        { SOL_SOCKET, SO_REUSEADDR, "SO_REUSEADDR", 0 },
+        { SOL_SOCKET, SO_DONTROUTE, "SO_DONTROUTE", 0 },
+        { SOL_SOCKET, SO_BROADCAST, "SO_BROADCAST", 0 },
+        { SOL_SOCKET, SO_KEEPALIVE, "SO_KEEPALIVE", 0 },
+        { SOL_SOCKET, SO_OOBINLINE, "SO_OOBINLINE", 0 },
+        { SOL_SOCKET, SO_PASSCRED,  "SO_PASSCRED",  0 },
+/*      { SOL_SOCKET, SO_SNDLOWAT,  "SO_SNDLOWAT",  0 },*/
+        { SOL_SOCKET, SO_TYPE,      "SO_TYPE",      1 },
+        { SOL_SOCKET, SO_ERROR,     "SO_ERROR",     1 },
+        { SOL_SOCKET, SO_SNDBUF,    "SO_SNDBUF",    1 },
+        { SOL_SOCKET, SO_RCVBUF,    "SO_RCVBUF",    1 },
+        { SOL_SOCKET, SO_NO_CHECK,  "SO_NO_CHECK",  1 },
+        { SOL_TCP,    TCP_NODELAY,  "TCP_NODELAY",  1 },
+        { 0, 0, NULL, 0 },
+    };
+
+    for (p = optname_entries; p->optname; ++p) {
+      optlen = sizeof(optval);
+      ret = kernel_getsockopt(sock, p->optfam, p->optnum, (char *)&optval, &optlen);
+      if (ret == 0 && optval != 0) {
+        if (!p->show_val)
+            snprintf(str, MAXSTRINGLEN, "%s|", p->optname);
+        else
+            if (p->optnum == SO_TYPE) {
+              if ((optval & 0xf) == SOCK_STREAM) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_STREAM");
+              } else if ((optval & 0xf) == SOCK_DGRAM) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_DGRAM");
+              } else if ((optval & 0xf) == SOCK_RAW) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_RAW");
+              } else if ((optval & 0xf) == SOCK_SEQPACKET) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_SEQPACKET");
+              } else if ((optval & 0xf) == SOCK_RDM) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_RDM");
+              } else if ((optval & 0xf) == SOCK_DCCP) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_DCCP");
+              } else if ((optval & 0xf) == SOCK_PACKET) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_PACKET");
+              } else {
+                snprintf(str, MAXSTRINGLEN, "%s|", "OTHERS");
+              }
+              if ((optval & SOCK_CLOEXEC) == 1) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_CLOEXEC");
+              }
+              if ((optval & SOCK_NONBLOCK) == 1) {
+                snprintf(str, MAXSTRINGLEN, "%s|", "SOCK_NONBLOCK");
+              }
+            } else {
+              snprintf(str, MAXSTRINGLEN, "%s(%d)|", p->optname, optval);
+            }
+        strcat(STAP_RETVALUE, str);
+      }
+    }
+
+    optlen = sizeof(ling);
+    ret = kernel_getsockopt(sock, SOL_SOCKET, SO_LINGER, (void *)&ling, &optlen);
+    if (ret == 0 && ling.l_onoff != 0) {
+        snprintf(str, MAXSTRINGLEN, "SO_LINGER(%d)|", ling.l_linger);
+        strcat(STAP_RETVALUE, str);
+    }
+
+    STAP_RETVALUE[strlen(STAP_RETVALUE) - 1] = '\0';
+%}
+
+function socket_family:long (sock:long) %{ /* pure */
+	struct socket *sock = (struct socket *)((long)STAP_ARG_sock);
+	const struct proto_ops *ops = kread(&sock->ops);
+	STAP_RETVALUE = (long)kread(&ops->family);
+	CATCH_DEREF_FAULT();
+%}
+
+function handle_file_fd (task:long, pid:long, tid:long, fd:long, type:string) {
+  if (type == "read") {
+    pids[pid] |= T_DISKIO_READ
+    tids[tid] |= T_DISKIO_READ
+    process_num_diskio_read_reqs[pid] ++
+    thread_num_diskio_read_reqs[tid] ++
+    thread_diskio_read_fds[tid, fd] ++
+    process_diskio_read_fds[pid, fd] ++
+  }
+  else {
+    pids[pid] |= T_DISKIO_WRITE
+    tids[tid] |= T_DISKIO_WRITE
+    process_num_diskio_write_reqs[pid] ++
+    thread_num_diskio_write_reqs[tid] ++
+    thread_diskio_write_fds[tid, fd] ++
+    process_diskio_write_fds[pid, fd] ++
+  }
+  if (!([pid, tid, fd] in fds_flag))
+    fds_flag[pid, tid, fd] = task_file_handle_flags(task, fd)
+}
+
+function handle_socket_fd (task:long, pid:long, tid:long, fd:long, type:string) {
+  if (!([pid, tid, fd] in fds_flag))
+    fds_flag[pid, tid, fd] = task_file_handle_flags(task, fd)
+  if (!([pid, tid, fd] in fds_socket_opt)) {
+    sock = task_file_handle_socket(task, fd)
+    fds_socket_opt[pid, tid, fd] = socket_optname(sock)
+  }
+  if (!([pid, tid, fd] in fds_socket_fam)) {
+    sock = task_file_handle_socket(task, fd)
+    fds_socket_fam[pid, tid, fd] = socket_family(sock)
+  }
+  if (type == "recv") {
+    pids[pid] |= T_NETIO_TCP_RECV
+    tids[tid] |= T_NETIO_TCP_RECV
+    process_num_tcp_recv_reqs[pid] ++
+    thread_num_tcp_recv_reqs[tid] ++
+    thread_tcp_recv_fds[tid, fd] ++
+    process_tcp_recv_fds[pid, fd] ++
+  }
+  else {
+    pids[pid] |= T_NETIO_TCP_SEND
+    tids[tid] |= T_NETIO_TCP_SEND
+    process_num_tcp_send_reqs[pid] ++
+    thread_num_tcp_send_reqs[tid] ++
+    thread_tcp_send_fds[tid, fd] ++
+    process_tcp_send_fds[pid, fd] ++
+  }
+}
+
+function compute_num_fds () {
+  foreach([pid, fd] in process_tcp_recv_fds)
+    process_num_tcp_recv_fds[pid] ++
+  foreach([pid, fd] in process_tcp_send_fds)
+    process_num_tcp_send_fds[pid] ++
+  foreach([tid, fd] in thread_tcp_recv_fds)
+    thread_num_tcp_recv_fds[tid] ++
+  foreach([tid, fd] in thread_tcp_send_fds)
+    thread_num_tcp_send_fds[tid] ++
+  foreach([pid, fd] in process_diskio_read_fds)
+    process_num_diskio_read_fds[pid] ++
+  foreach([pid, fd] in process_diskio_write_fds)
+    process_num_diskio_write_fds[pid] ++
+  foreach([tid, fd] in thread_diskio_read_fds)
+    thread_num_diskio_read_fds[tid] ++
+  foreach([tid, fd] in thread_diskio_write_fds)
+    thread_num_diskio_write_fds[tid] ++
+}
+
+probe syscall.accept.return, syscall.accept4.return {
+  if (pid() != target() && ppid() != target() ) next
+  if (retval <= 0) next # accept error
+
+  pids[pid()] |= T_NETIO_LISTEN
+  tids[tid()] |= T_NETIO_LISTEN
+
+  process_num_conn_accept[pid()] ++
+  thread_num_conn_accept[tid()] ++
+
+  sys_accept_index ++
+  sys_accept_fd[pid(), tid(), sys_accept_index] = retval
+}
+
+probe syscall.epoll_wait, syscall.epoll_pwait  {
+  if (pid() != target() && ppid() != target() ) next
+
+  pids[pid()] |= T_EPOLL
+  tids[tid()] |= T_EPOLL
+
+  process_num_epolls[pid()] ++
+  thread_num_epolls[tid()] ++
+}
+
+probe syscall.select {
+  if (pid() != target() && ppid() != target() ) next
+
+  pids[pid()] |= T_SELECT
+  tids[tid()] |= T_SELECT
+
+  process_num_selects[pid()] ++
+  thread_num_selects[tid()] ++
+}
+
+probe syscall.poll,syscall.ppoll {
+  if (pid() != target() && ppid() != target() ) next
+
+  pids[pid()] |= T_POLL
+  tids[tid()] |= T_POLL
+  
+  process_num_polls[pid()] ++
+  thread_num_polls[tid()] ++
+}
+
+probe syscall.epoll_ctl {
+  if (pid() != target() && ppid() != target() ) next
+
+  if (!(op == %{EPOLL_CTL_ADD%})) next
+
+  events = @cast(event_uaddr, "struct epoll_event", "kernel")->events
+  events_str = ""
+  if (events & %{EPOLLIN%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLIN")
+    else
+      events_str = sprintf("%s|EPOLLIN", events_str)
+  }
+  if (events & %{EPOLLPRI%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLPRI")
+    else
+      events_str = sprintf("%s|EPOLLPRI", events_str)
+  }
+  if (events & %{EPOLLOUT%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLOUT")
+    else
+      events_str = sprintf("%s|EPOLLOUT", events_str)
+  }
+  if (events & %{EPOLLRDNORM%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLRDNORM")
+    else
+      events_str = sprintf("%s|EPOLLRDNORM", events_str)
+  }
+  if (events & %{EPOLLWRNORM%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLWRNORM")
+    else
+      events_str = sprintf("%s|EPOLLWRNORM", events_str)
+  }
+  if (events & %{EPOLLWRBAND%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLWRBAND")
+    else
+      events_str = sprintf("%s|EPOLLWRBAND", events_str)
+  }
+  if (events & %{EPOLLERR%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLERR")
+    else
+      events_str = sprintf("%s|EPOLLERR", events_str)
+  }
+  if (events & %{EPOLLHUP%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLHUP")
+    else
+      events_str = sprintf("%s|EPOLLHUP", events_str)
+  }
+  if (events & %{EPOLLRDHUP%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLRDHUP")
+    else
+      events_str = sprintf("%s|EPOLLRDHUP", events_str)
+  }
+  if (events & %{EPOLLONESHOT%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLONESHOT")
+    else
+      events_str = sprintf("%s|EPOLLONESHOT", events_str)
+  }
+  if (events & %{EPOLLET%}) {
+    if (events_str == "")
+      events_str = sprintf("EPOLLET")
+    else
+      events_str = sprintf("%s|EPOLLET", events_str)
+  }
+
+  epfds[pid(), tid(), epfd, fd] = events_str
+}
+
+probe syscall.read {
+  if (pid() != target() && ppid() != target() ) next
+  sys_read_index ++
+  sys_read_fd[pid(), tid(), sys_read_index] = fd
+  sys_read_count[pid(), tid(), sys_read_index] = count
+
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+
+  # If the fd is a regular file
+  if (fds_mode[pid(), tid(), fd] == "S_IFREG") {
+    handle_file_fd(task, pid(), tid(), fd, "read")
+    sys_read_type[pid(), tid(), sys_read_index] = "file"
+  }
+  # If the fd is a socket file
+  else if (fds_mode[pid(), tid(), fd] == "S_IFSOCK") {
+    handle_socket_fd(task, pid(), tid(), fd, "recv")
+    sys_read_type[pid(), tid(), sys_read_index] = "socket"
+  }
+  else {
+    sys_read_type[pid(), tid(), sys_read_index] = "other"
+  }
+}
+
+probe syscall.readv {
+  if (pid() != target() && ppid() != target() ) next
+  sys_readv_index ++
+  sys_readv_fd[pid(), tid(), sys_readv_index] = fd
+  i = 0
+  total = 0
+  while (i < count) {
+    len = @cast(vector_uaddr, "struct iovec", "kernel")[i]->iov_len
+    sys_readv_iov_each_count[pid(), tid(), sys_readv_index, i] = len
+    total += len
+    i++
+  }
+  sys_readv_count[pid(), tid(), sys_readv_index] = total
+  sys_readv_iov_count[pid(), tid(), sys_readv_index] = count
+
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+
+  # If the fd is a regular file
+  if (fds_mode[pid(), tid(), fd] == "S_IFREG") {
+    handle_file_fd(task, pid(), tid(), fd, "read")
+    sys_readv_type[pid(), tid(), sys_readv_index] = "file"
+  }
+  # If the fd is a socket file
+  else if (fds_mode[pid(), tid(), fd] == "S_IFSOCK") {
+    handle_socket_fd(task, pid(), tid(), fd, "recv")
+    sys_readv_type[pid(), tid(), sys_readv_index] = "socket"
+  }
+  else {
+    sys_readv_type[pid(), tid(), sys_readv_index] = "other"
+  }
+}
+
+probe syscall.pread {
+  if (pid() != target() && ppid() != target() ) next
+  sys_pread_index ++
+  sys_pread_fd[pid(), tid(), sys_pread_index] = fd
+  sys_pread_count[pid(), tid(), sys_pread_index] = count
+  sys_pread_offset[pid(), tid(), sys_pread_index] = offset
+  
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+  handle_file_fd(task, pid(), tid(), fd, "read")
+}
+
+probe syscall.preadv {
+  if (pid() != target() && ppid() != target() ) next
+  sys_preadv_index ++
+  sys_preadv_fd[pid(), tid(), sys_preadv_index] = fd
+  i = 0
+  total = 0
+  while (i < count) {
+    len = @cast(vector_uaddr, "struct iovec", "kernel")[i]->iov_len
+    sys_preadv_iov_each_count[pid(), tid(), sys_preadv_index, i] = len
+    total += len
+    i++
+  }
+  sys_preadv_count[pid(), tid(), sys_preadv_index] = total
+  sys_preadv_iov_count[pid(), tid(), sys_preadv_index] = count
+  sys_preadv_offset[pid(), tid(), sys_preadv_index] = offset
+
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+  handle_file_fd(task, pid(), tid(), fd, "read")
+}
+
+probe syscall.recv {
+  if (pid() != target() && ppid() != target() ) next
+  sys_recv_index ++
+  sys_recv_fd[pid(), tid(), sys_recv_index] = s
+  sys_recv_count[pid(), tid(), sys_recv_index] = len
+
+  task = pid2task(pid())
+  fds[pid(), tid(), s] = 1
+  fds_mode[pid(), tid(), s] = i_mode2str(task_file_handle_i_mode(task, s))
+  handle_socket_fd(task, pid(), tid(), s, "recv")
+}
+
+probe syscall.recvfrom {
+  if (pid() != target() && ppid() != target() ) next
+  sys_recvfrom_index ++
+  sys_recvfrom_fd[pid(), tid(), sys_recvfrom_index] = s
+  sys_recvfrom_count[pid(), tid(), sys_recvfrom_index] = len
+
+  task = pid2task(pid())
+  fds[pid(), tid(), s] = 1
+  fds_mode[pid(), tid(), s] = i_mode2str(task_file_handle_i_mode(task, s))
+  handle_socket_fd(task, pid(), tid(), s, "recv")
+}
+
+probe syscall.recvmsg {
+  if (pid() != target() && ppid() != target() ) next
+  sys_recvmsg_index ++
+  sys_recvmsg_fd[pid(), tid(), sys_recvmsg_index] = s
+  i = 0
+  total = 0
+  count = @cast(msg_uaddr, "struct user_msghdr", "kernel")->msg_iovlen
+  while (i < count) {
+    len = @cast(msg_uaddr, "struct user_msghdr", "kernel")->msg_iov[i]->iov_len
+    sys_recvmsg_iov_each_count[pid(), tid(), sys_recvmsg_index, i] = len
+    total += len
+    i++
+  }
+  sys_recvmsg_count[pid(), tid(), sys_recvmsg_index] = total
+  sys_recvmsg_iov_count[pid(), tid(), sys_recvmsg_index] = count
+
+  task = pid2task(pid())
+  fds[pid(), tid(), s] = 1
+  fds_mode[pid(), tid(), s] = i_mode2str(task_file_handle_i_mode(task, s))
+  handle_socket_fd(task, pid(), tid(), s, "recv")
+}
+
+probe syscall.write {
+  if (pid() != target() && ppid() != target() ) next
+  sys_write_index ++
+  sys_write_fd[pid(), tid(), sys_write_index] = fd
+  sys_write_count[pid(), tid(), sys_write_index] = count
+
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+
+  # If the fd is a regular file
+  if (fds_mode[pid(), tid(), fd] == "S_IFREG") {
+    handle_file_fd(task, pid(), tid(), fd, "write")
+    sys_write_type[pid(), tid(), sys_write_index] = "file"
+  }
+  # If the fd is a socket file
+  else if (fds_mode[pid(), tid(), fd] == "S_IFSOCK") {
+    handle_socket_fd(task, pid(), tid(), fd, "send")
+    sys_write_type[pid(), tid(), sys_write_index] = "socket"
+  }
+  else {
+    sys_write_type[pid(), tid(), sys_write_index] = "other"
+  }
+}
+
+probe syscall.writev {
+  if (pid() != target() && ppid() != target() ) next
+  sys_writev_index ++
+  sys_writev_fd[pid(), tid(), sys_writev_index] = fd
+  i = 0
+  total = 0
+  while (i < count) {
+    len = @cast(vector_uaddr, "struct iovec", "kernel")[i]->iov_len
+    sys_writev_iov_each_count[pid(), tid(), sys_writev_index, i] = len
+    total += len
+    i++
+  }
+  sys_writev_count[pid(), tid(), sys_writev_index] = total
+  sys_writev_iov_count[pid(), tid(), sys_writev_index] = count
+
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+
+  # If the fd is a regular file
+  if (fds_mode[pid(), tid(), fd] == "S_IFREG") {
+    handle_file_fd(task, pid(), tid(), fd, "write")
+    sys_writev_type[pid(), tid(), sys_writev_index] = "file"
+  }
+  # If the fd is a socket file
+  else if (fds_mode[pid(), tid(), fd] == "S_IFSOCK") {
+    handle_socket_fd(task, pid(), tid(), fd, "send")
+    sys_writev_type[pid(), tid(), sys_writev_index] = "socket"
+  }
+  else {
+    sys_writev_type[pid(), tid(), sys_writev_index] = "other"
+  }
+}
+
+probe syscall.pwrite {
+  if (pid() != target() && ppid() != target() ) next
+  sys_pwrite_index ++
+  sys_pwrite_fd[pid(), tid(), sys_pwrite_index] = fd
+  sys_pwrite_count[pid(), tid(), sys_pwrite_index] = count
+  sys_pwrite_offset[pid(), tid(), sys_pwrite_index] = offset
+  
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+  handle_file_fd(task, pid(), tid(), fd, "write")
+}
+
+probe syscall.pwritev {
+  if (pid() != target() && ppid() != target() ) next
+  sys_pwritev_index ++
+  sys_pwritev_fd[pid(), tid(), sys_pwritev_index] = fd
+  i = 0
+  total = 0
+  while (i < count) {
+    len = @cast(vector_uaddr, "struct iovec", "kernel")[i]->iov_len
+    sys_pwritev_iov_each_count[pid(), tid(), sys_pwritev_index, i] = len
+    total += len
+    i++
+  }
+  sys_pwritev_count[pid(), tid(), sys_pwritev_index] = total
+  sys_pwritev_iov_count[pid(), tid(), sys_pwritev_index] = count
+  sys_pwritev_offset[pid(), tid(), sys_pwritev_index] = offset
+
+  task = pid2task(pid())
+  fds[pid(), tid(), fd] = 1
+  fds_mode[pid(), tid(), fd] = i_mode2str(task_file_handle_i_mode(task, fd))
+  handle_file_fd(task, pid(), tid(), fd, "write")
+}
+
+probe syscall.send {
+  if (pid() != target() && ppid() != target() ) next
+  sys_send_index ++
+  sys_send_fd[pid(), tid(), sys_send_index] = s
+  sys_send_count[pid(), tid(), sys_send_index] = len
+
+  task = pid2task(pid())
+  fds[pid(), tid(), s] = 1
+  fds_mode[pid(), tid(), s] = i_mode2str(task_file_handle_i_mode(task, s))
+  handle_socket_fd(task, pid(), tid(), s, "send")
+}
+
+probe syscall.sendto {
+  if (pid() != target() && ppid() != target() ) next
+  sys_sendto_index ++
+  sys_sendto_fd[pid(), tid(), sys_sendto_index] = s
+  sys_sendto_count[pid(), tid(), sys_sendto_index] = len
+
+  task = pid2task(pid())
+  fds[pid(), tid(), s] = 1
+  fds_mode[pid(), tid(), s] = i_mode2str(task_file_handle_i_mode(task, s))
+  handle_socket_fd(task, pid(), tid(), s, "send")
+}
+
+probe syscall.sendmsg {
+  if (pid() != target() && ppid() != target() ) next
+  sys_sendmsg_index ++
+  sys_sendmsg_fd[pid(), tid(), sys_sendmsg_index] = s
+  i = 0
+  total = 0
+  count = @cast(msg_uaddr, "struct user_msghdr", "kernel<linux/socket.h>")->msg_iovlen
+  while (i < count) {
+    len = (@cast(msg_uaddr, "struct user_msghdr", "kernel<linux/socket.h>")->msg_iov)[i]->iov_len
+    sys_sendmsg_iov_each_count[pid(), tid(), sys_sendmsg_index, i] = len
+    total += len
+    i++
+  }
+  sys_sendmsg_count[pid(), tid(), sys_sendmsg_index] = total
+  sys_sendmsg_iov_count[pid(), tid(), sys_sendmsg_index] = count
+
+  task = pid2task(pid())
+  fds[pid(), tid(), s] = 1
+  fds_mode[pid(), tid(), s] = i_mode2str(task_file_handle_i_mode(task, s))
+  handle_socket_fd(task, pid(), tid(), s, "send")
+}
+
+probe syscall.clone {
+  if (pid() != target() && ppid() != target() ) next
+  tmp_clone_flags[tid()] =  clone_flags
+}
+
+probe syscall.clone.return {
+  if (pid() != target() && ppid() != target() ) next
+
+  clone_flags = tmp_clone_flags[tid()]
+  if (clone_flags & %{CLONE_VM%}) { # Clone with the same memory space, a.k.a. cloning a thread.
+    cloned_process_thread_edges[pid(), $return] += 1
+    cloned_thread_edges[tid(), $return] += 1
+    tids[tid()] |= T_CLONED
+    tids[$return] |= T_CLONE
+  }
+}
+
+probe scheduler.ctxswitch {
+  if (pid() != target() && ppid() != target() ) next
+  pids[prev_pid] |= T_APP
+  tids[prev_tid] |= T_APP
+
+  if (tid() == prev_tid) {
+    if (pid() == target()) pids[prev_pid] |= T_MASTER
+    if (tid() == prev_pid) tids[prev_tid] |= T_MASTER
+
+    process_thread_edges[prev_pid, prev_tid] = 1
+    thread_num_switched_off[prev_tid] ++
+    process_num_switched_off[prev_pid] ++
+  }
+}
+
+probe syscall.* {
+  if (pid() != target() && ppid() != target() ) next
+  syscall_cnt[pid(), tid(), ppfunc()] ++
+}
+
+function print_processes() {
+  printf("  \"processes\": {\n")
+  
+  foreach ([pid] in pids) {
+    printf("    \"%d\": {\n", pid)
+    printf("      \"type\": %d,\n", pids[pid])
+    printf("      \"conns_accept\": %d,\n", process_num_conn_accept[pid])
+    printf("      \"netio_tcp_recv\": %d,\n", process_num_tcp_recv_reqs[pid])
+    printf("      \"netio_tcp_send\": %d,\n", process_num_tcp_send_reqs[pid])
+    printf("      \"diskio_read\": %d,\n", process_num_diskio_read_reqs[pid])
+    printf("      \"diskio_write\": %d,\n", process_num_diskio_write_reqs[pid])
+    printf("      \"num_conns_recv\": %d,\n", process_num_tcp_recv_fds[pid])
+    printf("      \"num_conns_send\": %d,\n", process_num_tcp_send_fds[pid])
+    printf("      \"num_fds_read\": %d,\n", process_num_diskio_read_fds[pid])
+    printf("      \"num_fds_write\": %d,\n", process_num_diskio_write_fds[pid])
+    printf("      \"num_epolls\": %d,\n", process_num_epolls[pid])
+    printf("      \"num_polls\": %d,\n", process_num_polls[pid])
+    printf("      \"num_selects\": %d,\n", process_num_selects[pid])
+    printf("      \"num_ctx_switch\": %d,\n", process_num_switched_off[pid])
+    printf("    },\n")
+  }
+  printf("  },\n")
+}
+
+function print_threads() {
+  printf("  \"threads\": {\n")
+  
+  foreach ([tid] in tids) {
+    printf("    \"%d\": {\n", tid)
+    printf("      \"type\": %d,\n", tids[tid])
+    printf("      \"conns_accept\": %d,\n", thread_num_conn_accept[tid])
+    printf("      \"netio_tcp_recv\": %d,\n", thread_num_tcp_recv_reqs[tid])
+    printf("      \"netio_tcp_send\": %d,\n", thread_num_tcp_send_reqs[tid])
+    printf("      \"diskio_read\": %d,\n", thread_num_diskio_read_reqs[tid])
+    printf("      \"diskio_write\": %d,\n", thread_num_diskio_write_reqs[tid])
+    printf("      \"num_conns_recv\": %d,\n", thread_num_tcp_recv_fds[tid])
+    printf("      \"num_conns_send\": %d,\n", thread_num_tcp_send_fds[tid])
+    printf("      \"num_fds_read\": %d,\n", thread_num_diskio_read_fds[tid])
+    printf("      \"num_fds_write\": %d,\n", thread_num_diskio_write_fds[tid])
+    printf("      \"num_epolls\": %d,\n", thread_num_epolls[tid])
+    printf("      \"num_polls\": %d,\n", thread_num_polls[tid])
+    printf("      \"num_selects\": %d,\n", thread_num_selects[tid])
+    printf("      \"num_ctx_switch\": %d,\n", thread_num_switched_off[tid])      
+    printf("    },\n")
+  }
+  printf("  },\n")
+}
+
+function print_cloned_thread_graph_edges() {
+  printf("  \"cloned_thread_graph_edges\": [\n")
+  foreach ([l_tid, r_tid] in cloned_thread_edges) {
+    printf("    [%d, %d],\n", l_tid, r_tid)
+  }
+  printf("  ],\n")
+}
+
+function print_cloned_process_thread_graph_edges() {
+  printf("  \"cloned_process_thread_graph_edges\": [\n")
+  foreach ([l_pid, r_tid] in cloned_process_thread_edges) {
+    printf("    [%d, %d],\n", l_pid, r_tid)
+  }
+  printf("  ],\n")
+}
+
+function print_process_thread_graph_edges() {
+  printf("  \"process_thread_graph_edges\": [\n")
+  foreach ([l_pid, r_tid] in process_thread_edges) {
+    printf("    [%d, %d],\n", l_pid, r_tid)
+  }
+  printf("  ],\n")
+}
+
+function print_fds() {
+  printf("  \"fds\": {\n")
+  foreach ([pid, tid, fd] in fds) {
+    printf("    \"%d,%d,%d\": {\n", pid, tid, fd);
+    printf("      \"mode\": \"%s\",\n", fds_mode[pid, tid, fd]);
+    printf("      \"flag\": \"%s\",\n", fds_flag[pid, tid, fd]);
+    if (fds_mode[pid, tid, fd] == "S_IFSOCK") {
+      printf("      \"socket_opt\": \"%s\",\n", fds_socket_opt[pid, tid, fd]);
+      if (fds_socket_fam[pid, tid, fd] == %{ AF_UNIX %}) {
+        printf("      \"socket_fam\": \"AF_UNIX\",\n");
+      } else if (fds_socket_fam[pid, tid, fd] == %{ AF_INET %}) {
+        printf("      \"socket_fam\": \"AF_INET\",\n");
+      } else if (fds_socket_fam[pid, tid, fd] == %{ AF_INET6 %}) {
+        printf("      \"socket_fam\": \"AF_INET6\",\n");
+      } 
+    }
+    printf("    },\n")
+  }
+  printf("  },\n")
+}
+
+function print_epfds() {
+  printf("  \"epfds\": {\n")
+  foreach ([pid, tid, epfd, fd] in epfds) {
+    printf("    \"%d,%d,%d,%d\": {\n", pid, tid, epfd, fd);
+    printf("      \"events\": \"%s\",\n", epfds[pid, tid, epfd, fd]);
+    printf("    },\n")
+  }
+  printf("  },\n")
+}
+
+function print_syscall() {
+  printf("  \"syscall\": {\n")
+  foreach ([pid, tid, func_name] in syscall_cnt) {
+    printf("    \"%d,%d,%s\": %d,\n", pid, tid, func_name, syscall_cnt[pid, tid, func_name]);
+  }
+  printf("  },\n")
+}
+
+function print_read() {
+  printf("  \"read\": [\n")
+  foreach ([pid, tid, sys_read_index] in sys_read_fd) {
+    printf("    \"%d, %d, %d, %d, %s\",\n", pid, tid, sys_read_fd[pid, tid, sys_read_index], sys_read_count[pid, tid, sys_read_index], sys_read_type[pid, tid, sys_read_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_readv() {
+  printf("  \"readv\": [\n")
+  foreach ([pid, tid, sys_readv_index] in sys_readv_fd) {
+    printf("    \"%d, %d, %d, %d, ", pid, tid, sys_readv_fd[pid, tid, sys_readv_index], sys_readv_iov_count[pid, tid, sys_readv_index]);
+    for(i = 0; i < sys_readv_iov_count[pid, tid, sys_readv_index]; i++) {
+      printf("%d, ", sys_readv_iov_each_count[pid, tid, sys_readv_index, i])
+    }
+    printf("%d, %s\",\n", sys_readv_count[pid, tid, sys_readv_index], sys_readv_type[pid, tid, sys_readv_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_pread() {
+  printf("  \"pread\": [\n")
+  foreach ([pid, tid, sys_pread_index] in sys_pread_fd) {
+    printf("    \"%d, %d, %d, %d, %d\",\n", pid, tid, sys_pread_fd[pid, tid, sys_pread_index], sys_pread_offset[pid, tid, sys_pread_index], sys_pread_count[pid, tid, sys_pread_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_preadv() {
+  printf("  \"preadv\": [\n")
+  foreach ([pid, tid, sys_preadv_index] in sys_preadv_fd) {
+    printf("    \"%d, %d, %d, %d, %d, ", pid, tid, sys_preadv_fd[pid, tid, sys_preadv_index], sys_preadv_offset[pid, tid, sys_preadv_index], sys_preadv_iov_count[pid, tid, sys_preadv_index]);
+    for(i = 0; i < sys_preadv_iov_count[pid, tid, sys_preadv_index]; i++) {
+      printf("%d, ", sys_preadv_iov_each_count[pid, tid, sys_preadv_index, i])
+    }
+    printf("%d\",\n", sys_preadv_count[pid, tid, sys_preadv_index])
+  }
+  printf("  ],\n")
+}
+
+function print_recv() {
+  printf("  \"recv\": [\n")
+  foreach ([pid, tid, sys_recv_index] in sys_recv_fd) {
+    printf("    \"%d, %d, %d, %d\",\n", pid, tid, sys_recv_fd[pid, tid, sys_recv_index], sys_recv_count[pid, tid, sys_recv_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_recvfrom() {
+  printf("  \"recvfrom\": [\n")
+  foreach ([pid, tid, sys_recvfrom_index] in sys_recvfrom_fd) {
+    printf("    \"%d, %d, %d, %d\",\n", pid, tid, sys_recvfrom_fd[pid, tid, sys_recvfrom_index], sys_recvfrom_count[pid, tid, sys_recvfrom_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_recvmsg() {
+  printf("  \"recvmsg\": [\n")
+  foreach ([pid, tid, sys_recvmsg_index] in sys_recvmsg_fd) {
+    printf("    \"%d, %d, %d, %d, ", pid, tid, sys_recvmsg_fd[pid, tid, sys_recvmsg_index], sys_recvmsg_iov_count[pid, tid, sys_recvmsg_index])
+    for(i = 0; i < sys_recvmsg_iov_count[pid, tid, sys_recvmsg_index]; i++) {
+      printf("%d, ", sys_recvmsg_iov_each_count[pid, tid, sys_recvmsg_index, i])
+    }
+    printf("%d\",\n", sys_recvmsg_count[pid, tid, sys_recvmsg_index])
+  }
+  printf("  ],\n")
+}
+
+function print_write() {
+  printf("  \"write\": [\n")
+  foreach ([pid, tid, sys_write_index] in sys_write_fd) {
+    printf("    \"%d, %d, %d, %d, %s\",\n", pid, tid, sys_write_fd[pid, tid, sys_write_index], sys_write_count[pid, tid, sys_write_index], sys_write_type[pid, tid, sys_write_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_writev() {
+  printf("  \"writev\": [\n")
+  foreach ([pid, tid, sys_writev_index] in sys_writev_fd) {
+    printf("    \"%d, %d, %d, %d, ", pid, tid, sys_writev_fd[pid, tid, sys_writev_index], sys_writev_iov_count[pid, tid, sys_writev_index]);
+    for(i = 0; i < sys_writev_iov_count[pid, tid, sys_writev_index]; i++) {
+      printf("%d, ", sys_writev_iov_each_count[pid, tid, sys_writev_index, i])
+    }
+    printf("%d, %s\",\n", sys_writev_count[pid, tid, sys_writev_index], sys_writev_type[pid, tid, sys_writev_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_pwrite() {
+  printf("  \"pwrite\": [\n")
+  foreach ([pid, tid, sys_pwrite_index] in sys_pwrite_fd) {
+    printf("    \"%d, %d, %d, %d, %d\",\n", pid, tid, sys_pwrite_fd[pid, tid, sys_pwrite_index], sys_pwrite_offset[pid, tid, sys_pwrite_index], sys_pwrite_count[pid, tid, sys_pwrite_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_pwritev() {
+  printf("  \"pwritev\": [\n")
+  foreach ([pid, tid, sys_pwritev_index] in sys_pwritev_fd) {
+    printf("    \"%d, %d, %d, %d, %d, ", pid, tid, sys_pwritev_fd[pid, tid, sys_pwritev_index], sys_pwritev_offset[pid, tid, sys_pwritev_index], sys_pwritev_iov_count[pid, tid, sys_pwritev_index]);
+    for(i = 0; i < sys_pwritev_iov_count[pid, tid, sys_pwritev_index]; i++) {
+      printf("%d, ", sys_pwritev_iov_each_count[pid, tid, sys_pwritev_index, i])
+    }
+    printf("%d\",\n", sys_pwritev_count[pid, tid, sys_pwritev_index])
+  }
+  printf("  ],\n")
+}
+
+function print_send() {
+  printf("  \"send\": [\n")
+  foreach ([pid, tid, sys_send_index] in sys_send_fd) {
+    printf("    \"%d, %d, %d, %d\",\n", pid, tid, sys_send_fd[pid, tid, sys_send_index], sys_send_count[pid, tid, sys_send_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_sendto() {
+  printf("  \"sendto\": [\n")
+  foreach ([pid, tid, sys_sendto_index] in sys_sendto_fd) {
+    printf("    \"%d, %d, %d, %d\",\n", pid, tid, sys_sendto_fd[pid, tid, sys_sendto_index], sys_sendto_count[pid, tid, sys_sendto_index]);
+  }
+  printf("  ],\n")
+}
+
+function print_sendmsg() {
+  printf("  \"sendmsg\": [\n")
+  foreach ([pid, tid, sys_sendmsg_index] in sys_sendmsg_fd) {
+    printf("    \"%d, %d, %d, %d, ", pid, tid, sys_sendmsg_fd[pid, tid, sys_sendmsg_index], sys_sendmsg_iov_count[pid, tid, sys_sendmsg_index])
+    for(i = 0; i < sys_sendmsg_iov_count[pid, tid, sys_sendmsg_index]; i++) {
+      printf("%d, ", sys_sendmsg_iov_each_count[pid, tid, sys_sendmsg_index, i])
+    }
+    printf("%d\",\n", sys_sendmsg_count[pid, tid, sys_sendmsg_index])
+  }
+  printf("  ],\n")
+}
+
+function print_accept() {
+  printf("  \"accept\": [\n")
+  foreach ([pid, tid, sys_accept_index] in sys_accept_fd) {
+    printf("    \"%d, %d, %d\",\n", pid, tid, sys_accept_fd[pid, tid, sys_accept_index]);
+  }
+  printf("  ],\n")
+}
+
+probe end {
+  compute_num_fds ()
+  printf("{\n")
+  print_threads()
+  print_processes()
+  print_fds()
+  print_epfds()
+  print_cloned_thread_graph_edges()
+  print_cloned_process_thread_graph_edges()
+  print_process_thread_graph_edges()
+  print_syscall()
+  print_read()
+  print_readv()
+  print_pread()
+  print_preadv()
+  print_recv()
+  print_recvfrom()
+  print_recvmsg()
+  print_write()
+  print_writev()
+  print_pwrite()
+  print_pwritev()
+  print_send()
+  print_sendto()
+  print_sendmsg()
+  print_accept()
+  printf("}\n")
+}

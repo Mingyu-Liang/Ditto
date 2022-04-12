@@ -1,0 +1,4 @@
+.python-version
+logs
+*.pyc
+__pycache__

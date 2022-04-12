@@ -1,0 +1,13 @@
+{
+  "memcached": {
+    "app_cmd": "/memcached-1.6.9/build/memcached -p 11212 -t 4",
+    "client_cmd": "/mutated/client/mutated_memcache 0.0.0.0:11212 -n <conns> -w 0 -c 0 -s <duration> <reqs_per_sec>",
+    "conns_list": [10, 20, 30],
+    "reqs_list": [10000, 20000, 30000],
+    "duration_list": [10, 20, 30],
+    "typical_conns": 20,
+    "typical_reqs": 20000,
+    "typical_duration": 20,
+    "perf_freq": 1000
+  }
+}
