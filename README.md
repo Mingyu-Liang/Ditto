@@ -19,17 +19,6 @@ Tools are tested on Ubuntu 20.04.4 LTS (GNU/Linux 5.4.0-100-generic x86_64 with 
 
 2. Generate the backbone of the synthetic application following the instructions in the [README.md](./network_skeleton//README.md) based on the analysis results of step 1. An example of the generation of synthetic Memcached skeleton is provided in [synthetic_memcached_skeleon](./synthetic_memcached_skeleton/).
 
-3. Next, we run Intel SDE and Valgrind to profile the platform-independent features of the orignal application. Note that we also need to do the similar profiling on the skeleton of the synthetic application to take into account the existing codes. More details can be found at [README.md](./sde_valgrind_profiling/README.md).
+3. Next, we run Intel SDE and Valgrind to profile the platform-independent features of the orignal application. Note that we also need to do the similar profiling on the skeleton of the synthetic application to take into account the existing codes. We then generate the synthetic assembly codes as the application body in the request handler. More details can be found at [README.md](./assembly_analysis/README.md).
 
-### Backbone Analysis
-
-Analyze the network and thread model of the target applications. Follow the instructions under backbone_analysis.
-
-Generate the backbone of synthetic application with network_skeleton. Follow the instructions under network_skeleton.
-
-### Run SDE and Valgrind
-
-### Generate the synthetic application body with assembly codes.
-
-### Collect the perf results and fine tune.
-
+4. Finally, we run the synthetic application and collect the performance characteristics with Perf and fine tune the parameters of the generator to calibrate the output of previous steps, due to inaccuracies introduced by profiling. 
