@@ -25,7 +25,7 @@ THREAD_POOL_SIZE = 32
 parser = argparse.ArgumentParser(description='args for profiling')
 parser.add_argument('-a', '--app', type=str, dest='app', help='Application name', required=True)
 parser.add_argument('-p', '--pid', type=int, dest='pid', 
-    help='Pid of the profiled process', required=False)
+                    help='Pid of the profiled process', required=True)
 parser.add_argument('-o', '--output_path', dest='output_path',
                     default='./logs', help='Profiling output path')
 parser.add_argument('--debug', dest='debug', action='store_true', help='Debug level logging')
