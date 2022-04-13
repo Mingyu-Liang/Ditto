@@ -17,9 +17,9 @@ Tools are tested on Ubuntu 20.04.4 LTS (GNU/Linux 5.4.0-100-generic x86_64 with 
 
 1. The first step is to analyze the network and thread model of the target application. Follow the instructions in the [README.md](./backbone_analysis/README.md) of backbone analysis.
 
-2. Generate the backbone of the synthetic application following the instructions in the [README.md](./network_skeleton//README.md) based on the analysis results of step 1. An example of the generation of synthetic Memcached skeleton is provided in synthetic_memcached_skeleon.
+2. Generate the backbone of the synthetic application following the instructions in the [README.md](./network_skeleton//README.md) based on the analysis results of step 1. An example of the generation of synthetic Memcached skeleton is provided in [synthetic_memcached_skeleon](./synthetic_memcached_skeleton/).
 
-3. 
+3. Next, we run Intel SDE and Valgrind to profile the platform-independent features of the orignal application. Note that we also need to do the similar profiling on the skeleton of the synthetic application to take into account the existing codes. More details can be found at [README.md](./sde_valgrind_profiling/README.md).
 
 ### Backbone Analysis
 
