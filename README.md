@@ -7,7 +7,7 @@
 * Linux Perf-5.4.166
 * Valgrind-3.19.0
 
-  We make a minor modification to enable valgrind emulation with cache size equal to cache line size ([*cachegrind/cg_arch.c*](./valgrind/cachegrind/cg_arch.c)). The modified source code is provided and you may recompile it on your platform.
+  We make a minor modification to enable valgrind emulation with cache size equal to cache line size ([cachegrind/cg_arch.c](./valgrind/cachegrind/cg_arch.c)). The modified source code is provided and you may recompile it on your platform.
 
 * Intel SDE-8.63.0
 
