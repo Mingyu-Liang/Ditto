@@ -15,8 +15,8 @@
 class TCPConn
 {
 public:
-    static const int READ_BUFFER_SIZE = 20480;
-    static const int WRITE_BUFFER_SIZE = 20480;
+    static const int READ_BUFFER_SIZE = 540;
+    static const int WRITE_BUFFER_SIZE = 540;
 
 public:
     TCPConn() {}

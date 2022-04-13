@@ -14,4 +14,6 @@ Available macros and their corresponding pairs in network_model_characteristics 
 
 The thread pool size of acceptor threads and network threads (if necessary) can be specified as command line arguments when launching the synthetic application, for ease of adjustment. See *config.cpp* for details.
 
+This skeleton contains the network-related system calls for the communication, but it may not use the exactly same system calls used by the original application. You can change them or inject new system calls according to the system call characteristics from analysis results.
+
 Note that this network skeleton has included the initialization of memory array in heap for future memory access when injecting assembly codes in the request handler.
