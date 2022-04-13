@@ -13,8 +13,9 @@
 
 Tools are tested on Ubuntu 20.04.4 LTS (GNU/Linux 5.4.0-100-generic x86_64 with debugging symbols). You may need to install different versions of the tools if using different Linux distributions and kernel versions.
 
-## Experiments
+## Usage
 
+1. The first step is to analyze the network and thread model of the target application. Follow the instructions in the [README.md](./backbone_analysis/README.md) of backbone analysis.
 ### Backbone Analysis
 
 Analyze the network and thread model of the target applications. Follow the instructions under backbone_analysis.
