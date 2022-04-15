@@ -191,5 +191,4 @@ void TCPConn::Process(uint64_t* mem_data, uint64_t* curr_mem_addrs, uint64_t* cu
         bytes_to_send_ = iv_[0].iov_len + iv_[1].iov_len + iv_[2].iov_len;
         WriteOnce();
     }
-    printf("request_id: %lu\n", request_id);
 }

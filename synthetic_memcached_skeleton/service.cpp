@@ -62,7 +62,7 @@ void Service::EventListen()
 #endif // NETWORKEPOLL
 #endif // NETWORKDISPATCH
 #ifdef ACCEPTDISPATCH
-    epoll_accept_thread_pool_ = new EpollAcceptThreadPool(conns_, accept_thread_number_, service_port_, network_epoll_fds_, network_thread_number_);
+    epoll_accept_thread_pool_ = new EpollAcceptThreadPool(conns_, accept_thread_number_, service_port_, network_epoll_fds_, network_thread_number_, shared_pointer_chasing_mem_data_);
 #else
     listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     assert(listen_fd_ >= 0);
