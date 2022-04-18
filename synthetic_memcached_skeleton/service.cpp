@@ -28,6 +28,7 @@ Service::~Service()
     delete[] conns_;
     delete epoll_network_thread_pool_;
     delete epoll_accept_thread_pool_;
+    delete[] shared_pointer_chasing_mem_data_;
 }
 
 void Service::Init(int port, int network_thread_number, int accept_thread_number)
