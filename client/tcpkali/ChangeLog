@@ -1,0 +1,77 @@
+
+1.1.3:
+    * Fix for \{message.marker} in presence of -1.
+    * Switch to hexadecimal output of non-printable characters (-d).
+
+1.1.1:  2017-Jan-20
+    * Release distribution fix.
+
+1.1:    2017-Jan-19
+    * Support rsv1, rsv2, rsv3 reserved flags in in \{ws.* <reserved-flag>}.
+    * Fix statsd output for connections.opened.
+    * Support for \{raw Expression}, which removes ws framing.
+    * '-vvv' option does not dump the traffic. Use -d or --dump-* options.
+    * Added units (ms) to latency percentiles output.
+    * Add ability to specify host in -l [host:]port.
+    * \{message.marker} inserts a detectable timestamp to count messages/s.
+
+1.0:    2016-Sep-29
+    * Export --latency-connect and --latency-first-bytes to statsd.
+    * --latency-percentiles now affect --statsd reporting as well.
+    * Added -H, --header to add HTTP headers to WebSocket handshake.
+    * Added --message-stop to quickly die if a given message is seen.
+
+0.9:	2016-Aug-24
+    * Added -r@<Latency> form to measure message rate at a given latency.
+    * Websocket frame types in expressions: \{ws.ping}, \{ws.pong}, etc.
+    * Websocket frames accept files: \{ws.binary <image.png>}.
+    * Websocket frames can be non-final: \{ws.binary ...}.
+    * Regular expressions as data generators: \{re <regex>}.
+    * Display last received bytes with --verbose 2.
+
+0.8:    2016-Jan-15
+    * Added --latency-connect to measure connect latency.
+    * Added --latency-first-byte to measure latency to first byte.
+    * Added --latency-percentiles to control percentile reporting.
+    * Mean/max latencies for messages are not reported, for UI consistency.
+      Use --latency-percentiles 50,100 to display.
+    * Added --dump-{one,all}{,-in,-out} to dump all or one connections' i/o.
+    * Added --write-combine=off to emit high packet rates.
+
+0.7:    2015-Dec-11
+    * Added a manual page.
+    * Exceed 64k connections limit by using IP aliases on network interfaces.
+      This is a default behavior.
+    * --latency-marker-skip <N> to ignore the first occurrences of a marker.
+    * --listen-mode=active to send data for connections received through -l.
+    * --source-ip <IP> option to restrict or change source IPs.
+    * "Bandwidth per channel:" output changed to ⇅ to reflect bi-direction.
+
+0.6:    2015-May-13
+    * Parse \{connection.uid} type expressions in
+      --first-message, --message, --latency-marker parameters,
+      allowing constructing payloads unique per connection.
+    * Added "k" multiplier to --connections;
+      allowing for a -c10k option (inside joke ;)
+
+0.5:    2015-Apr-14
+    * --enable-asan and --enable-tsan flags to enable address/thread sanitizer.
+    * Do not account latencies for --first-message.
+
+0.4.9:	2015-Apr-09
+    * Maximum storable latency increased from 10s to 100s.
+    * -e (--unescape-message-args) now affect --latency-marker string as well.
+    * --websocket now awaits response after sending HTTP upgrade headers.
+    * Add WebSocket masking on client->server communication (mandated by RFC).
+    * Use Boyer-Moore-Horspool to search --latency-marker in the stream.
+    * Add --sndbuf and --rcvbuf command line options to adjust kernel buffers
+      via setsockopt(SO_*BUF).
+    * Record latencies even if only a portion of a message has been sent.
+
+0.4.2:  2015-Feb-23
+    * --channel-bandwidth limit is now applicable to sink mode (--listen-port).
+    * Build and run on 32-bit platforms.
+
+0.4:    2015-Feb-03
+    * Initial release.
+

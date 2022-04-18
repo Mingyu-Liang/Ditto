@@ -1,0 +1,13 @@
+*.o
+*.swp
+*.cache
+*.in
+*.m4
+config.*
+configure
+depcomp
+install-sh
+missing
+ltmain.sh
+*.tar.gz
+src/statsd-cli
