@@ -1,6 +1,6 @@
 # Applications
 
-Here we list some exemplary commands to launch, setup and load the application:
+Here we list some exemplary commands to launch, setup and load the application. Note that before running the application, you may need to recompile it on your platform.
 
 ## Memcached 
 
