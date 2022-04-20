@@ -31,3 +31,28 @@ Send user requests:
 ```
 /client/mutated/client/mutated_synthetic 0.0.0.0:9016 -p 54 -n <conns> -w 0 -c 0 -s <duration> 1000 <reqs_per_sec>
 ```
+
+## Nginx 
+
+### Nginx
+Launch the application:
+```
+/applications/nginx-1.20.1/build/sbin/nginx -c /applications/nginx-1.20.1/build/conf/nginx.conf
+```
+
+Send user requests:
+```
+/client/tcpkali/build/bin/tcpkali -vvv -em "GET / HTTP/1.1\r\nHost: 0.0.0.0:18081\r\n\r\n" -c <conns> -r <reqs_per_sec_per_conn> -T <duration> --latency-percentiles 50,90,95,99 --latency-marker "HTTP/1.1" 0.0.0.0:18081
+```
+
+### Synthetic Nginx 
+
+Launch the application:
+```
+/applications/synthetic_nginx/syn_nginx -p 9017 -n 1
+```
+
+Send user requests:
+```
+/client/tcpkali/build/bin/tcpkali -vvv -em "GET\n" -c <conns> -r <reqs_per_sec_per_conn> -T <duration> --latency-percentiles 50,90,95,99 --latency-marker "reply" 0.0.0.0:9017
+```
