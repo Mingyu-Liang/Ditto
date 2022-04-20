@@ -4,6 +4,7 @@ Here we list some exemplary commands to launch, setup and load the application. 
 
 ## Memcached 
 
+### Memcached
 Launch the application:
 ```
 /applications/memcached-1.6.9/build/memcached -p 11212 -t 4
@@ -19,7 +20,7 @@ Send user requests:
 /client/mutated/client/mutated_memcache 0.0.0.0:11212 -n <conns> -w 0 -c 0 -s <duration> <reqs_per_sec>
 ```
 
-## Synthetic Memcached 
+### Synthetic Memcached 
 
 Launch the application:
 ```
