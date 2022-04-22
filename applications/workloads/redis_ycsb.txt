@@ -1,0 +1,13 @@
+recordcount=100000
+
+workload=site.ycsb.workloads.CoreWorkload
+readallfields=true
+redis.host=127.0.0.1
+redis.port=16379
+
+readproportion=1
+updateproportion=0
+scanproportion=0
+insertproportion=0
+
+requestdistribution=uniform
