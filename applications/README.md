@@ -56,3 +56,32 @@ Send user requests:
 ```
 /client/tcpkali/build/bin/tcpkali -vvv -em "GET\n" -c <conns> -r <reqs_per_sec_per_conn> -T <duration> --latency-percentiles 50,90,95,99 --latency-marker "reply" 0.0.0.0:9017
 ```
+
+## Redis 
+
+### Redis
+Launch the application:
+```
+/applications/redis-6.2.6/src/redis-server /applications/redis-6.2.6/redis.conf
+```
+
+Load it with 100K records:
+```
+python2 /client/ycsb-redis-binding-0.18.0-SNAPSHOT/bin/ycsb load redis -P /applications/workloads/redis_ycsb.txt -threads 1 -target 5000
+```
+
+Send user requests:
+```
+python2 /client/ycsb-redis-binding-0.18.0-SNAPSHOT/bin/ycsb run redis -P /applications/workloads/redis_ycsb.txt -threads <conns> -p operationcount=<reqs> -target <reqs_per_sec>
+```
+
+### Synthetic Redis 
+
+Launch the application:
+```
+/applications/synthetic_redis/syn_redis -p 9018
+```
+
+Send user requests:
+```
+python2 /client/ycsb-syn-redis-binding-0.18.0-SNAPSHOT/bin/ycsb run redis -P /applications/workloads/syn-redis_ycsb.txt -threads <conns> -p operationcount=<reqs> -target <reqs_per_sec>

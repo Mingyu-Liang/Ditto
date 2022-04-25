@@ -23,4 +23,4 @@ Tools are tested on Ubuntu 20.04.4 LTS (GNU/Linux 5.4.0-100-generic x86_64 with 
 
 4. Finally, we run the synthetic application and collect the performance characteristics with Perf, and fine tune the parameters of the generator to calibrate the output of previous steps, due to inaccuracies introduced by profiling.
 
-Some applications and their synthetic versions (after fine tuning) are provided in [applications](./applications). You can follow the instructions to run the applications.
+Applications and their synthetic versions are provided in [applications](./applications). You can follow the instructions to run the applications.
