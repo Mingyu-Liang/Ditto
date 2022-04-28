@@ -1,0 +1,13 @@
+{
+  "memcached": {
+    "app_cmd": "/applications/memcached-1.6.9/build/memcached -p 11212 -t 4",
+    "load_cmd": "/client/mutated/client/load_memcache 0.0.0.0:11212",
+    "client_cmd": "/client/mutated/client/mutated_memcache 0.0.0.0:11212 -n <conns> -w 0 -c 0 -s <duration> <reqs_per_sec>",
+    "app_cwd": "/applications/memcached-1.6.9/build"
+  },
+  "syn_memcached_skeleton": {
+    "app_cmd": "/synthetic_memcached_skeleton/syn_memcached -p 9016 -n 4",
+    "client_cmd": "/client/mutated/client/mutated_synthetic 0.0.0.0:9016 -p 54 -n <conns> -w 0 -c 0 -s <duration> 100 <reqs_per_sec>",
+    "app_cwd": "/synthetic_memcached_skeleton"
+  }
+}
