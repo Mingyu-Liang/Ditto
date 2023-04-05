@@ -2,7 +2,7 @@
 
 ## Publication
 
-"Ditto: End-to-End Application Cloning for Networked Cloud Services". Mingyu Liang*, Yu Gan*, Yueying Li, Carlos Torres, Abhishek Dhanotia, Mahesh Ketkar, and Christina Delimitrou. To appear in 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS), Vancouver, Canada, April 2023.
+"Ditto: End-to-End Application Cloning for Networked Cloud Services". Mingyu Liang*, Yu Gan*, Yueying Li, Carlos Torres, Abhishek Dhanotia, Mahesh Ketkar, and Christina Delimitrou. In 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS), Vancouver, Canada, April 2023.
 
 ## Pre-requirements
 
