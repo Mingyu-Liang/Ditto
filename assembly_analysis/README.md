@@ -20,4 +20,10 @@
 
 3. Then, run the same SDE and Valgrind profiling for the synthetic application skeleton since when generating the assembly code as the application body, we need to consider the existing codes (application skeleton). You can imagine this process as: the statistics of the original application is the target, the statistics of the skeleton part is what we already have, and the subtraction of the two is what we need to add as the body part. 
 
-4. Run the generator script to generate the assembly code. This part is still under construction.
+4. Run the generator script to generate the assembly code to replace the body part (../synthetic_memcached_skeleton/assembly.cpp) of the synthetic application with the generated code.
+
+    ```
+    python generator.py > assembly.cpp
+    ```
+
+    Remember to set the correct input path of the SDE and Valgrind profiling results in [generator.py](./generator.py).
